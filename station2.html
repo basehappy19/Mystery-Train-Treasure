@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mystery Train Treasure - Station 2</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #000; }
+        #game-canvas { display: block; width: 100vw; height: 100vh; }
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0, 0, 0, 0.85); color: white; z-index: 20; transition: opacity 0.5s ease; }
+        .hidden { opacity: 0; pointer-events: none; }
+        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px; margin-top: 20px; transition: background 0.3s; }
+        button:hover { background: #218838; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background-color: white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 5; mix-blend-mode: difference; }
+        #notification { position: absolute; top: 80px; right: 20px; background: rgba(255, 255, 255, 0.9); color: black; padding: 15px; border-radius: 8px; font-weight: bold; z-index: 15; transition: opacity 0.5s; }
+        #objective-ui { position: absolute; top: 20px; left: 20px; background: rgba(0, 0, 0, 0.7); border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; color: white; z-index: 10; max-width: 300px; }
+        #objective-ui h3 { margin: 0 0 10px 0; font-size: 16px; color: #ffc107; text-transform: uppercase; }
+        #objective-ui p { margin: 0; font-size: 14px; font-weight: bold; }
+        #route-ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 30px; z-index: 10; }
+        .station-dot { width: 15px; height: 15px; background: gray; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-size: 10px; font-weight: bold;}
+        .station-dot.active { background: #ffc107; box-shadow: 0 0 10px #ffc107; color: black; }
+        .route-line { width: 40px; height: 3px; background: gray; }
+        #inventory-ui { position: absolute; bottom: 20px; left: 20px; display: flex; gap: 10px; z-index: 10; }
+        .inv-slot { width: 60px; height: 60px; position: relative; background: rgba(255,255,255,0.2); border: 2px solid #fff; border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 30px; color: white; text-shadow: 2px 2px 4px #000; transition: all 0.2s; }
+        .inv-slot.active { border-color: #ffc107; background: rgba(255, 193, 7, 0.4); transform: scale(1.1); box-shadow: 0 0 15px rgba(255, 193, 7, 0.5); }
+        .slot-number { position: absolute; top: 2px; left: 5px; font-size: 12px; opacity: 0.8; }
+        #stamina-container { position: absolute; bottom: 90px; left: 20px; width: 200px; height: 12px; background: rgba(0,0,0,0.6); border: 2px solid #fff; border-radius: 6px; z-index: 10; overflow: hidden; }
+        #stamina-bar { width: 100%; height: 100%; background: #28a745; transition: width 0.1s linear, background-color 0.3s; }
+        #pause-screen { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); }
+    </style>
+    <audio id="train-sound" src="sounds/train.mp3" loop></audio>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="notification" class="hidden"></div>
+    <div id="objective-ui"><h3>Objective</h3><p id="objective-text">รอคำสั่ง...</p></div>
+    <div id="route-ui"><div class="station-dot">1</div><div class="route-line" style="background:#ffc107;"></div><div class="station-dot active">2</div><div class="route-line"></div><div class="station-dot">3</div></div>
+    
+    <div id="stamina-container"><div id="stamina-bar"></div></div>
+    <div id="inventory-ui">
+        <div class="inv-slot active" id="inv-slot-1"><span class="slot-number">1</span><span id="item-1"></span></div>
+        <div class="inv-slot" id="inv-slot-2"><span class="slot-number">2</span><span id="item-2"></span></div>
+        <div class="inv-slot" id="inv-slot-3"><span class="slot-number">3</span><span id="item-3"></span></div>
+    </div>
+
+    <div id="start-screen" class="ui-layer">
+        <h1>สถานีที่ 2: อุโมงค์มรณะ</h1>
+        <p>คุณเดินทางมาถึงอุโมงค์ที่มืดมิด มีเพียงแสงไฟฉายเล็กๆ...</p>
+        <button id="start-btn">ลุยต่อ</button>
+    </div>
+    
+    <div id="pause-screen" class="ui-layer hidden"><h1>หยุดเกมชั่วคราว</h1><p>คลิกที่หน้าจอเพื่อเล่นต่อ</p></div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        const canvas = document.querySelector('#game-canvas');
+        const scene = new THREE.Scene();
+        // ✨ ด่านอุโมงค์ มืดสนิท
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.FogExp2(0x000000, 0.08);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 8);
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // ✨ ไฟฉายติดตัวผู้เล่น (Flashlight)
+        const flashlight = new THREE.SpotLight(0xffffff, 1.5, 40, Math.PI/6, 0.5, 1);
+        flashlight.position.set(0, 0, 0);
+        camera.add(flashlight);
+        camera.add(flashlight.target);
+        flashlight.target.position.set(0, 0, -1);
+        
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.05); // มืดมาก
+        scene.add(ambientLight);
+
+        const handGroup = new THREE.Group();
+        handGroup.position.set(0.6, -0.4, -1); 
+        camera.add(handGroup);
+        scene.add(camera);
+
+        const collidableMeshes = [];
+
+        // พื้นหินในอุโมงค์
+        const planeGeo = new THREE.PlaneGeometry(100, 100);
+        const planeMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 1.0 });
+        const plane = new THREE.Mesh(planeGeo, planeMat);
+        plane.rotation.x = -Math.PI / 2;
+        scene.add(plane);
+
+        // โหลดรถไฟ
+        const loader = new GLTFLoader();
+        let trainModel, crowbarModel;
+        loader.load('/models/train.glb', (gltf) => {
+            trainModel = gltf.scene; trainModel.position.set(0, 0, -5);
+            trainModel.traverse((child) => { if (child.isMesh) { child.userData.isTrain = true; collidableMeshes.push(child); } });
+            scene.add(trainModel);
+        });
+
+        // โหลดชะแลงไว้แสดงในมือ (เผื่อถือมา)
+        loader.load('/models/crowbar.glb', (gltf) => { crowbarModel = gltf.scene; });
+
+        const controls = new PointerLockControls(camera, document.body);
+        scene.add(controls.getObject());
+
+        let gameStarted = false;
+        document.getElementById('start-btn').addEventListener('click', () => { gameStarted = true; controls.lock(); });
+        document.getElementById('pause-screen').addEventListener('click', () => { controls.lock(); });
+        controls.addEventListener('lock', () => { document.getElementById('start-screen').classList.add('hidden'); document.getElementById('pause-screen').classList.add('hidden'); });
+        controls.addEventListener('unlock', () => { if (gameStarted) document.getElementById('pause-screen').classList.remove('hidden'); });
+
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let isSprinting = false; let stamina = 100; const maxStamina = 100; const staminaBar = document.getElementById('stamina-bar');
+        const velocity = new THREE.Vector3(); const direction = new THREE.Vector3();
+
+        // ✨ โหลดข้อมูลกระเป๋าจากด่านที่ 1
+        let savedInv = sessionStorage.getItem('trainInventory');
+        let inventory = savedInv ? JSON.parse(savedInv) : { 1: null, 2: null, 3: null }; 
+        let activeSlot = 1; 
+
+        function updateHandDisplay() {
+            while(handGroup.children.length > 0){ handGroup.remove(handGroup.children[0]); }
+            const currentItem = inventory[activeSlot];
+            if (currentItem === 'crowbar' && crowbarModel) {
+                const clone = crowbarModel.clone(); clone.position.set(0, 0, 0); clone.rotation.set(Math.PI/4, -Math.PI/2, 0); handGroup.add(clone);
+            }
+        }
+
+        function updateSlotUI() {
+            for (let i = 1; i <= 3; i++) {
+                const el = document.getElementById('inv-slot-' + i);
+                if (i === activeSlot) el.classList.add('active'); else el.classList.remove('active');
+                let emoji = ""; if (inventory[i] === 'crowbar') emoji = "🪝"; document.getElementById('item-' + i).innerText = emoji;
+            }
+            updateHandDisplay(); 
+        }
+
+        document.addEventListener('keydown', (e) => {
+            switch (e.code) {
+                case 'KeyW': moveForward = true; break; case 'KeyA': moveLeft = true; break; case 'KeyS': moveBackward = true; break; case 'KeyD': moveRight = true; break;
+                case 'ShiftLeft': case 'ShiftRight': isSprinting = true; break; 
+                case 'Digit1': activeSlot = 1; updateSlotUI(); break; case 'Digit2': activeSlot = 2; updateSlotUI(); break; case 'Digit3': activeSlot = 3; updateSlotUI(); break;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch (e.code) { case 'KeyW': moveForward = false; break; case 'KeyA': moveLeft = false; break; case 'KeyS': moveBackward = false; break; case 'KeyD': moveRight = false; break; case 'ShiftLeft': case 'ShiftRight': isSprinting = false; break; }
+        });
+
+        let prevTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate); const time = performance.now(); const delta = (time - prevTime) / 1000;
+
+            if (controls.isLocked) {
+                velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
+                direction.z = Number(moveForward) - Number(moveBackward); direction.x = Number(moveRight) - Number(moveLeft); direction.normalize();
+
+                let isMoving = moveForward || moveBackward || moveLeft || moveRight; let currentSpeed = 40.0;
+                if (isSprinting && stamina > 0 && isMoving) { currentSpeed = 70.0; stamina -= 25 * delta; if (stamina < 0) stamina = 0; } else { stamina += 15 * delta; if (stamina > maxStamina) stamina = maxStamina; }
+                staminaBar.style.width = (stamina / maxStamina * 100) + '%'; staminaBar.style.backgroundColor = stamina < 30 ? '#dc3545' : '#28a745'; 
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * currentSpeed * delta; if (moveLeft || moveRight) velocity.x -= direction.x * currentSpeed * delta;
+                const oldPosition = camera.position.clone();
+                controls.moveRight(-velocity.x * delta); controls.moveForward(-velocity.z * delta);
+                if (camera.position.y < 2) camera.position.y = 2; 
+
+                const moveDistance = oldPosition.distanceTo(camera.position);
+                if (moveDistance > 0) {
+                    const rayDir = new THREE.Vector3().subVectors(camera.position, oldPosition).normalize();
+                    const moveRay = new THREE.Raycaster(new THREE.Vector3(oldPosition.x, 1.5, oldPosition.z), rayDir, 0, moveDistance + 0.4); 
+                    const hits = moveRay.intersectObjects(collidableMeshes, false);
+                    if (hits.length > 0) { camera.position.copy(oldPosition); velocity.set(0, 0, 0); }
+                }
+            }
+            prevTime = time; renderer.render(scene, camera);
+        }
+        
+        setTimeout(updateSlotUI, 500); // รอให้โมเดลโหลดเสร็จค่อยอัปเดตมือ
+        animate();
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+    </script>
+</body>
+</html>

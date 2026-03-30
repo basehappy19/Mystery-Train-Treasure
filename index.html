@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mystery Train Treasure - Station 1</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #000; }
+        #game-canvas { display: block; width: 100vw; height: 100vh; }
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0, 0, 0, 0.85); color: white; z-index: 20; transition: opacity 0.5s ease; }
+        .hidden { opacity: 0; pointer-events: none; }
+        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px; margin-top: 20px; transition: background 0.3s; }
+        button:hover { background: #218838; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background-color: white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 5; mix-blend-mode: difference; }
+        #notification { position: absolute; top: 80px; right: 20px; background: rgba(255, 255, 255, 0.9); color: black; padding: 15px; border-radius: 8px; font-weight: bold; z-index: 15; transition: opacity 0.5s; }
+        #objective-ui { position: absolute; top: 20px; left: 20px; background: rgba(0, 0, 0, 0.7); border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; color: white; z-index: 10; max-width: 300px; }
+        #objective-ui h3 { margin: 0 0 10px 0; font-size: 16px; color: #ffc107; text-transform: uppercase; }
+        #objective-ui p { margin: 0; font-size: 14px; font-weight: bold; }
+        #route-ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 30px; z-index: 10; }
+        .station-dot { width: 15px; height: 15px; background: gray; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-size: 10px; font-weight: bold;}
+        .station-dot.active { background: #ffc107; box-shadow: 0 0 10px #ffc107; color: black; }
+        .route-line { width: 40px; height: 3px; background: gray; }
+        #inventory-ui { position: absolute; bottom: 20px; left: 20px; display: flex; gap: 10px; z-index: 10; }
+        .inv-slot { width: 60px; height: 60px; position: relative; background: rgba(255,255,255,0.2); border: 2px solid #fff; border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 30px; color: white; text-shadow: 2px 2px 4px #000; transition: all 0.2s; }
+        .inv-slot.active { border-color: #ffc107; background: rgba(255, 193, 7, 0.4); transform: scale(1.1); box-shadow: 0 0 15px rgba(255, 193, 7, 0.5); }
+        .slot-number { position: absolute; top: 2px; left: 5px; font-size: 12px; opacity: 0.8; }
+        #stamina-container { position: absolute; bottom: 90px; left: 20px; width: 200px; height: 12px; background: rgba(0,0,0,0.6); border: 2px solid #fff; border-radius: 6px; z-index: 10; overflow: hidden; }
+        #stamina-bar { width: 100%; height: 100%; background: #28a745; transition: width 0.1s linear, background-color 0.3s; }
+        #minimap-wrapper { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; background: rgba(0,20,0,0.6); border: 3px solid #555; border-radius: 50%; overflow: hidden; z-index: 10; }
+        .map-marker { position: absolute; border-radius: 50%; transform: translate(-50%, -50%); }
+        #player-marker { width: 8px; height: 8px; background: #ff4444; box-shadow: 0 0 5px red; z-index: 4; }
+        #train-marker { width: 12px; height: 18px; background: #4488ff; border-radius: 2px; z-index: 1; }
+        #fuel-marker { width: 8px; height: 8px; background: #ffcc00; box-shadow: 0 0 5px yellow; z-index: 2; }
+        #house-marker { width: 14px; height: 14px; background: #8B4513; border-radius: 2px; z-index: 1; }
+        #crowbar-marker { width: 6px; height: 12px; background: #silver; box-shadow: 0 0 5px white; border-radius: 2px; z-index: 2; }
+        #travel-screen { z-index: 30; }
+        #pause-screen { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); }
+    </style>
+    <audio id="train-sound" src="sounds/train.mp3" loop></audio>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="notification" class="hidden"></div>
+    <div id="objective-ui"><h3>Objective</h3><p id="objective-text">สำรวจป่าเพื่อหาถังน้ำมัน</p></div>
+    <div id="route-ui"><div class="station-dot active">1</div><div class="route-line"></div><div class="station-dot">2</div><div class="route-line"></div><div class="station-dot">3</div></div>
+    <div id="stamina-container"><div id="stamina-bar"></div></div>
+    <div id="inventory-ui">
+        <div class="inv-slot active" id="inv-slot-1"><span class="slot-number">1</span><span id="item-1"></span></div>
+        <div class="inv-slot" id="inv-slot-2"><span class="slot-number">2</span><span id="item-2"></span></div>
+        <div class="inv-slot" id="inv-slot-3"><span class="slot-number">3</span><span id="item-3"></span></div>
+    </div>
+    <div id="minimap-wrapper">
+        <div id="player-marker" class="map-marker"></div>
+        <div id="train-marker" class="map-marker"></div>
+        <div id="house-marker" class="map-marker"></div>
+        <div id="crowbar-marker" class="map-marker"></div>
+        <div id="fuel-marker" class="map-marker"></div>
+    </div>
+
+    <div id="start-screen" class="ui-layer">
+        <h1>สถานีที่ 1: ป่าลึกลับ</h1>
+        <p>ภารกิจ: สำรวจป่า หา <b>ถังน้ำมัน</b> ให้เจอ ก่อนขึ้นรถไฟ!</p>
+        <p><i>เคล็ดลับ: <b>กด Shift ค้างเพื่อวิ่ง</b> | ใช้ปุ่ม 1,2,3 เลือกของ | กด Q โยนของทิ้ง</i></p>
+        <button id="start-btn">เริ่มเกม</button>
+    </div>
+
+    <div id="pause-screen" class="ui-layer hidden">
+        <h1>หยุดเกมชั่วคราว</h1><p>คลิกที่หน้าจอเพื่อเล่นต่อ</p>
+    </div>
+
+    <div id="travel-screen" class="ui-layer hidden" style="background: black; transition: opacity 2s;">
+        <h1 style="color: white; margin-bottom: 40px;">🚂 กำลังเดินทางไปยังอุโมงค์มืด (สถานีที่ 2)...</h1>
+        <div style="font-size: 24px; margin: 10px 0; color: #ffc107;">ระยะทาง: <span id="distance-display">0</span> / 30 กม.</div>
+        <div style="font-size: 24px; margin: 10px 0; color: #ffc107;">น้ำมันคงเหลือ: <span id="fuel-display">100</span> %</div>
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        const canvas = document.querySelector('#game-canvas');
+        const scene = new THREE.Scene();
+        // ✨ เพิ่มความสว่างฉาก
+        scene.background = new THREE.Color(0x28332a);
+        scene.fog = new THREE.FogExp2(0x28332a, 0.025);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 8);
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // ✨ เพิ่มแสงสภาพแวดล้อม
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); 
+        scene.add(ambientLight);
+        const moonLight = new THREE.DirectionalLight(0xddf0ff, 0.9);
+        moonLight.position.set(20, 30, 20);
+        moonLight.castShadow = true;
+        moonLight.shadow.mapSize.width = 1024;
+        moonLight.shadow.mapSize.height = 1024;
+        scene.add(moonLight);
+
+        const trainLight = new THREE.PointLight(0xffaa00, 1.2, 20);
+        trainLight.position.set(0, 3, -5);
+        scene.add(trainLight);
+
+        const handGroup = new THREE.Group();
+        handGroup.position.set(0.6, -0.4, -1); 
+        camera.add(handGroup);
+        scene.add(camera);
+
+        const collidableMeshes = [];
+
+        const planeGeo = new THREE.PlaneGeometry(150, 150, 64, 64);
+        const posAttr = planeGeo.attributes.position;
+        for (let i = 0; i < posAttr.count; i++) {
+            let x = posAttr.getX(i); let y = posAttr.getY(i);
+            let z = Math.sin(x * 0.1) * Math.cos(y * 0.1) * 0.3;
+            if (Math.abs(x) < 4) z *= 0.1; 
+            posAttr.setZ(i, z);
+        }
+        planeGeo.computeVertexNormals();
+        const planeMat = new THREE.MeshStandardMaterial({ color: 0x3d4a2d, roughness: 0.9, metalness: 0.05 });
+        const plane = new THREE.Mesh(planeGeo, planeMat);
+        plane.rotation.x = -Math.PI / 2;
+        plane.receiveShadow = true;
+        scene.add(plane);
+
+        const particleGeo = new THREE.BufferGeometry();
+        const pCount = 300; const pPos = new Float32Array(pCount * 3);
+        for(let i=0; i<pCount*3; i++) { pPos[i] = (Math.random() - 0.5) * 80; if(i%3 === 1) pPos[i] = Math.random() * 4; }
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        const particleMat = new THREE.PointsMaterial({ size: 0.1, color: 0x88ff88, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
+        const particles = new THREE.Points(particleGeo, particleMat);
+        scene.add(particles);
+
+        function createProceduralTree(x, z) {
+            const group = new THREE.Group();
+            const heightScale = 0.5 + Math.random() * 2.5; 
+            const trunkGeo = new THREE.CylinderGeometry(0.3, 0.6, 2.5 * heightScale, 6);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2b1b11, roughness: 1.0 });
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = (2.5 * heightScale) / 2; trunk.castShadow = true;
+            group.add(trunk); collidableMeshes.push(trunk);
+
+            const leavesGeo = new THREE.ConeGeometry(1.5 * (0.8 + Math.random()*0.5), 3 * heightScale, 7);
+            const leavesMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.02, 0.25 + Math.random() * 0.1, 0.02), roughness: 0.8 });
+            const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+            leaves.position.y = trunk.position.y + (1.2 * heightScale); leaves.castShadow = true;
+            group.add(leaves); group.position.set(x, 0, z);
+            return group;
+        }
+
+        const housePos = new THREE.Vector3(20, 0, 10);
+        const doorPos = new THREE.Vector3(19.25, 1.5, 13.4);  
+        const fuelPos = new THREE.Vector3(22, 0.5, 10); 
+        const crowbarPos = new THREE.Vector3(-15, 0.1, -15); 
+
+        for (let i = 0; i < 90; i++) {
+            const x = (Math.random() - 0.5) * 120; const z = (Math.random() - 0.5) * 120;
+            if (Math.abs(x) < 5 || (x > 10 && x < 30 && z > 0 && z < 20)) continue; 
+            scene.add(createProceduralTree(x, z));
+        }
+
+        const loader = new GLTFLoader();
+        let trainModel, houseModel, fuelTankModel, crowbarModel;
+        let doorMesh;
+
+        loader.load('/models/train.glb', (gltf) => {
+            trainModel = gltf.scene; trainModel.position.set(0, 0, -5);
+            trainModel.traverse((child) => { if (child.isMesh) { child.userData.isTrain = true; child.castShadow = true; child.receiveShadow = true; collidableMeshes.push(child); } });
+            scene.add(trainModel);
+        });
+
+        loader.load('/models/old_house.glb', (gltf) => {
+            houseModel = gltf.scene; houseModel.position.copy(housePos);
+            houseModel.traverse((child) => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; collidableMeshes.push(child); } });
+            scene.add(houseModel);
+        });
+
+        const dGeo = new THREE.BoxGeometry(0.5, 3, 2);
+        const dMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+        doorMesh = new THREE.Mesh(dGeo, dMat);
+        doorMesh.position.copy(doorPos); doorMesh.userData.isDoor = true; doorMesh.rotation.y = Math.PI / 2; doorMesh.visible = false; 
+        collidableMeshes.push(doorMesh); scene.add(doorMesh);
+
+        loader.load('/models/ussr_gas_canister.glb', (gltf) => {
+            fuelTankModel = gltf.scene; fuelTankModel.scale.set(0.04, 0.04, 0.04); fuelTankModel.position.copy(fuelPos); 
+            fuelTankModel.traverse((child) => { if (child.isMesh) child.userData.isFuel = true; child.castShadow = true; });
+            scene.add(fuelTankModel);
+        });
+
+        loader.load('/models/crowbar.glb', (gltf) => {
+            crowbarModel = gltf.scene; crowbarModel.position.copy(crowbarPos);
+            crowbarModel.traverse((child) => { if (child.isMesh) child.userData.isCrowbar = true; child.castShadow = true; });
+            scene.add(crowbarModel);
+        });
+
+        const controls = new PointerLockControls(camera, document.body);
+        scene.add(controls.getObject());
+
+        let gameStarted = false;
+        document.getElementById('start-btn').addEventListener('click', () => { gameStarted = true; controls.lock(); });
+        document.getElementById('pause-screen').addEventListener('click', () => { controls.lock(); });
+
+        controls.addEventListener('lock', () => { document.getElementById('start-screen').classList.add('hidden'); document.getElementById('pause-screen').classList.add('hidden'); });
+        controls.addEventListener('unlock', () => { if (gameStarted && document.getElementById('travel-screen').classList.contains('hidden')) { document.getElementById('pause-screen').classList.remove('hidden'); } });
+
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let isSprinting = false; let stamina = 100; const maxStamina = 100; const staminaBar = document.getElementById('stamina-bar');
+        const velocity = new THREE.Vector3(); const direction = new THREE.Vector3();
+
+        let inventory = { 1: null, 2: null, 3: null }; let activeSlot = 1; 
+
+        function updateHandDisplay() {
+            while(handGroup.children.length > 0){ handGroup.remove(handGroup.children[0]); }
+            const currentItem = inventory[activeSlot];
+            if (currentItem === 'fuel' && fuelTankModel) {
+                const clone = fuelTankModel.clone(); clone.position.set(0, 0, 0); clone.rotation.set(0.2, Math.PI, 0); clone.scale.set(0.02, 0.02, 0.02); clone.traverse(child => child.userData = {}); handGroup.add(clone);
+            } else if (currentItem === 'crowbar' && crowbarModel) {
+                const clone = crowbarModel.clone(); clone.position.set(0, 0, 0); clone.rotation.set(Math.PI/4, -Math.PI/2, 0); clone.traverse(child => child.userData = {}); handGroup.add(clone);
+            }
+        }
+
+        function updateSlotUI() {
+            for (let i = 1; i <= 3; i++) {
+                const el = document.getElementById('inv-slot-' + i);
+                if (i === activeSlot) el.classList.add('active'); else el.classList.remove('active');
+                let emoji = ""; if (inventory[i] === 'fuel') emoji = "🛢️"; if (inventory[i] === 'crowbar') emoji = "🪝"; document.getElementById('item-' + i).innerText = emoji;
+            }
+            updateHandDisplay(); 
+        }
+
+        function addItem(itemType) {
+            if (!inventory[activeSlot]) { inventory[activeSlot] = itemType; updateSlotUI(); return true; }
+            for (let i = 1; i <= 3; i++) { if (!inventory[i]) { inventory[i] = itemType; updateSlotUI(); return true; } }
+            showNotification("กระเป๋าเต็ม! กด Q เพื่อโยนไอเทมที่ถืออยู่ออกไป"); return false;
+        }
+
+        function dropItem() {
+            const itemType = inventory[activeSlot]; if (!itemType) return; 
+            const dropPos = camera.position.clone(); const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dropPos.add(dir.multiplyScalar(2)); dropPos.y = 0.5; 
+            if (itemType === 'crowbar') { crowbarModel.position.copy(dropPos); scene.add(crowbarModel); } else if (itemType === 'fuel') { fuelTankModel.position.copy(dropPos); scene.add(fuelTankModel); }
+            inventory[activeSlot] = null; updateSlotUI();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            switch (e.code) {
+                case 'KeyW': moveForward = true; break; case 'KeyA': moveLeft = true; break; case 'KeyS': moveBackward = true; break; case 'KeyD': moveRight = true; break;
+                case 'ShiftLeft': case 'ShiftRight': isSprinting = true; break; 
+                case 'Digit1': activeSlot = 1; updateSlotUI(); break; case 'Digit2': activeSlot = 2; updateSlotUI(); break; case 'Digit3': activeSlot = 3; updateSlotUI(); break;
+                case 'KeyQ': dropItem(); break; 
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch (e.code) { case 'KeyW': moveForward = false; break; case 'KeyA': moveLeft = false; break; case 'KeyS': moveBackward = false; break; case 'KeyD': moveRight = false; break; case 'ShiftLeft': case 'ShiftRight': isSprinting = false; break; }
+        });
+
+        const raycaster = new THREE.Raycaster();
+        let questState = 0; let doorOpened = false;
+
+        function updateObjective(text) { document.getElementById('objective-text').innerText = text; }
+        function showNotification(msg) { const noti = document.getElementById('notification'); noti.innerText = msg; noti.classList.remove('hidden'); setTimeout(() => noti.classList.add('hidden'), 4000); }
+
+        window.addEventListener('click', () => {
+            if (!controls.isLocked) return;
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+            if (intersects.length > 0) {
+                let object = intersects[0].object;
+                if (object.userData.isCrowbar) {
+                    if (addItem('crowbar')) { if(questState < 2) { questState = 2; updateObjective("ถือชะแลงไว้ในมือ แล้วไปงัดประตูบ้าน"); } scene.remove(crowbarModel); }
+                }
+                if (object.userData.isDoor) {
+                    if (inventory[activeSlot] !== 'crowbar') {
+                        showNotification("คุณต้องถือชะแลงในมือ (กดเลขช่อง 1-3) เพื่องัดประตู!");
+                        if(questState < 1) { questState = 1; updateObjective("ค้นหาชะแลง (Crowbar) ที่ซ่อนอยู่ในป่า"); }
+                    } else {
+                        showNotification("คุณงัดประตูสำเร็จ! (เข้าไปได้เลย)");
+                        scene.remove(doorMesh); const index = collidableMeshes.indexOf(doorMesh); if (index > -1) collidableMeshes.splice(index, 1);
+                        if (houseModel) { houseModel.traverse((child) => { if (child.isMesh) { const cIdx = collidableMeshes.indexOf(child); if (cIdx > -1) collidableMeshes.splice(cIdx, 1); } }); }
+                        doorOpened = true; if(questState < 3) { questState = 3; updateObjective("เข้าไปหยิบถังน้ำมันในบ้าน"); }
+                        inventory[activeSlot] = null; updateSlotUI();
+                    }
+                }
+                if (object.userData.isFuel) {
+                    if (!doorOpened) { showNotification("ต้องงัดประตูบ้านก่อนถึงจะหยิบได้!"); return; }
+                    if (addItem('fuel')) { if(questState < 4) { questState = 4; updateObjective("ถือถังน้ำมัน แล้วกลับไปที่ขบวนรถไฟ"); } scene.remove(fuelTankModel); }
+                }
+                if (object.userData.isTrain || object === trainModel) {
+                    let hasFuelInBag = false; for(let i=1; i<=3; i++) { if(inventory[i] === 'fuel') hasFuelInBag = true; }
+                    if (!hasFuelInBag) { showNotification("รถไฟน้ำมันหมด! ต้องเก็บถังน้ำมันใส่กระเป๋าก่อน"); } else { startJourney(); }
+                }
+            }
+        });
+
+        function startJourney() {
+            controls.unlock();
+            const travelScreen = document.getElementById('travel-screen'); travelScreen.classList.remove('hidden'); setTimeout(() => { travelScreen.style.opacity = 1; }, 50);
+
+            const trainSound = document.getElementById('train-sound'); trainSound.volume = 0; trainSound.play();
+            let volFade = setInterval(() => { if(trainSound.volume < 0.6) trainSound.volume += 0.05; else clearInterval(volFade); }, 200);
+
+            let distance = 0; let fuel = 100;
+            const distDisplay = document.getElementById('distance-display'); const fuelDisplay = document.getElementById('fuel-display');
+
+            const journeyInterval = setInterval(() => {
+                distance += 1; fuel -= (95 / 30);
+                distDisplay.innerText = distance; fuelDisplay.innerText = Math.max(5, Math.floor(fuel)); 
+
+                if (distance >= 30) {
+                    clearInterval(journeyInterval);
+                    for(let i=1; i<=3; i++) { if(inventory[i] === 'fuel') inventory[i] = null; }
+                    
+                    // ✨ เซฟของที่เหลือในกระเป๋าไว้ ก่อนเปลี่ยนด่าน
+                    sessionStorage.setItem('trainInventory', JSON.stringify(inventory));
+                    
+                    let volFadeOut = setInterval(() => {
+                        if(trainSound.volume > 0.05) trainSound.volume -= 0.05;
+                        else { 
+                            trainSound.pause(); clearInterval(volFadeOut); 
+                            // ✨ นำทางผู้เล่นไปสถานีที่ 2
+                            window.location.href = "station2.html";
+                        }
+                    }, 100);
+                }
+            }, 150);
+        }
+
+        let prevTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate); const time = performance.now(); const delta = (time - prevTime) / 1000;
+            const pPos = particles.geometry.attributes.position.array;
+            for(let i=1; i<pCount*3; i+=3) { pPos[i] += Math.sin(time*0.001 + i) * 0.01; if(pPos[i] > 5) pPos[i] = 0; }
+            particles.geometry.attributes.position.needsUpdate = true;
+
+            if (controls.isLocked) {
+                velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
+                direction.z = Number(moveForward) - Number(moveBackward); direction.x = Number(moveRight) - Number(moveLeft); direction.normalize();
+
+                let isMoving = moveForward || moveBackward || moveLeft || moveRight; let currentSpeed = 40.0;
+                if (isSprinting && stamina > 0 && isMoving) { currentSpeed = 70.0; stamina -= 25 * delta; if (stamina < 0) stamina = 0; } else { stamina += 15 * delta; if (stamina > maxStamina) stamina = maxStamina; }
+                staminaBar.style.width = (stamina / maxStamina * 100) + '%'; staminaBar.style.backgroundColor = stamina < 30 ? '#dc3545' : '#28a745'; 
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * currentSpeed * delta; if (moveLeft || moveRight) velocity.x -= direction.x * currentSpeed * delta;
+                const oldPosition = camera.position.clone();
+                controls.moveRight(-velocity.x * delta); controls.moveForward(-velocity.z * delta);
+                if (camera.position.y < 2) camera.position.y = 2; 
+
+                const moveDistance = oldPosition.distanceTo(camera.position);
+                if (moveDistance > 0) {
+                    const rayDir = new THREE.Vector3().subVectors(camera.position, oldPosition).normalize();
+                    const moveRay = new THREE.Raycaster(new THREE.Vector3(oldPosition.x, 1.5, oldPosition.z), rayDir, 0, moveDistance + 0.4); 
+                    const hits = moveRay.intersectObjects(collidableMeshes, false);
+                    if (hits.length > 0) { camera.position.copy(oldPosition); velocity.set(0, 0, 0); }
+                }
+
+                if (questState === 0 && camera.position.distanceTo(housePos) < 12) {
+                    questState = 1; updateObjective("ประตูบ้านถูกล็อค! ค้นหาชะแลง (Crowbar) ในป่า"); showNotification("ดูเหมือนประตูบ้านจะถูกล็อคนะ");
+                }
+            }
+            
+            const mapScale = 150 / 100; const offset = 75; 
+            document.getElementById('player-marker').style.left = `${Math.min(140, Math.max(10, (camera.position.x * mapScale) + offset))}px`;
+            document.getElementById('player-marker').style.top = `${Math.min(140, Math.max(10, (camera.position.z * mapScale) + offset))}px`;
+            document.getElementById('train-marker').style.left = `${(0 * mapScale) + offset}px`; document.getElementById('train-marker').style.top = `${(-5 * mapScale) + offset}px`;
+            document.getElementById('house-marker').style.left = `${(housePos.x * mapScale) + offset}px`; document.getElementById('house-marker').style.top = `${(housePos.z * mapScale) + offset}px`;
+
+            const crowbarMarker = document.getElementById('crowbar-marker'); let hasCrowbarInBag = inventory[1]==='crowbar' || inventory[2]==='crowbar' || inventory[3]==='crowbar';
+            if (!hasCrowbarInBag && questState >= 1 && crowbarModel && crowbarModel.parent === scene) { crowbarMarker.style.left = `${(crowbarModel.position.x * mapScale) + offset}px`; crowbarMarker.style.top = `${(crowbarModel.position.z * mapScale) + offset}px`; crowbarMarker.style.display = 'block'; } else { crowbarMarker.style.display = 'none'; }
+            const fuelMarker = document.getElementById('fuel-marker'); let hasFuelInBag = inventory[1]==='fuel' || inventory[2]==='fuel' || inventory[3]==='fuel';
+            if (!hasFuelInBag && doorOpened && fuelTankModel && fuelTankModel.parent === scene) { fuelMarker.style.left = `${(fuelTankModel.position.x * mapScale) + offset}px`; fuelMarker.style.top = `${(fuelTankModel.position.z * mapScale) + offset}px`; fuelMarker.style.display = 'block'; } else { fuelMarker.style.display = 'none'; }
+
+            prevTime = time; renderer.render(scene, camera);
+        }
+        
+        updateSlotUI(); animate();
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+    </script>
+</body>
+</html>
