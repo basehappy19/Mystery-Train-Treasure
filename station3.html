@@ -55,7 +55,7 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 
-    <audio id="ambient-sound" src="/sounds/s3.mp3" loop></audio>
+    <audio id="ambient-sound" src="/sounds/s2.mp3" loop></audio>
     
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -76,7 +76,7 @@
         <p id="objective-text">ค้นหา "คันโยก" และ "ถังน้ำมัน" ที่ซ่อนอยู่ในเขาวงกตให้ทันเวลาก่อนอุโมงค์ถล่ม!</p>
     </div>
     
-    <div id="timer-ui">05:00</div>
+    <div id="timer-ui">10:00</div>
 
     <div id="route-ui">
         <div class="station-dot">1</div><div class="route-line" style="background:#ffc107;"></div>
@@ -101,11 +101,11 @@
         <canvas id="full-map-canvas" width="600" height="600"></canvas>
     </div>
 
-    <div id="start-screen" class="ui-layer hidden">
+    <div id="start-screen" class="ui-layer">
         <h1 style="color: #ffc107; font-size: 48px; margin-bottom: 10px;">สถานที่สุดท้าย: เขาวงกตหายนะ</h1>
         <p style="font-size: 20px; max-width: 600px; text-align: center; line-height: 1.6; color: #ddd;">
             คุณเดินทางมาถึงจุดสิ้นสุดของแผนที่ แต่โครงสร้างที่นี่กำลังจะถล่มลงมา! <br><br>
-            <span style="color:#ff4444; font-weight:bold; font-size:24px;">คุณมีเวลาเพียง 5 นาที!</span><br>
+            <span style="color:#ff4444; font-weight:bold; font-size:24px;">คุณมีเวลาเพียง 10 นาที!</span><br>
             จงฝ่าเขาวงกตอันซับซ้อนนี้เพื่อตามหา <b>คันโยก</b> เปิดประตู และ <b>ถังน้ำมัน</b><br>แล้วรีบกลับมาที่รถไฟเพื่อหนีเอาชีวิตรอด!
         </p>
         <p style="color: #ffc107; margin-top: 15px;"><i>[ กด M เพื่อดูแผนที่โครงสร้างเขาวงกต ]</i></p>
@@ -132,7 +132,7 @@
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
         // --- 1. Procedural Maze Generator ---
-        const MAZE_SIZE = 35; // ต้องเป็นเลขคี่
+        const MAZE_SIZE = 35; 
         const CELL_SIZE = 4;  
         const maze = Array(MAZE_SIZE).fill().map(() => Array(MAZE_SIZE).fill(1)); 
 
@@ -168,7 +168,6 @@
                 }
             }
         }
-        // เรียงให้จุดอยู่ไกลจากจุดเกิดที่สุด
         deadEnds.sort((a,b) => (b.x*b.x + b.y*b.y) - (a.x*a.x + a.y*a.y));
         const leverCell = deadEnds[0]; 
         const fuelCell = deadEnds[1] || deadEnds[0]; 
@@ -329,12 +328,12 @@
         const controls = new PointerLockControls(camera, document.body); scene.add(controls.getObject());
         let gameStarted = false; let isMapOpen = false; let gameEnded = false;
 
-        let timeLeft = 300; 
+        // ✨ แก้ไขเวลาเป็น 600 วินาที (10 นาที)
+        let timeLeft = 600; 
 
         document.getElementById('start-btn').addEventListener('click', () => { 
             gameStarted = true; 
             controls.lock(); 
-            // ✨ เล่นเสียง Ambient
             const ambientSound = document.getElementById('ambient-sound');
             if(ambientSound) {
                 ambientSound.volume = 0.5; 
@@ -361,6 +360,7 @@
         function updateHandDisplay() {
             while(handGroup.children.length > 0){ handGroup.remove(handGroup.children[0]); }
             const currentItem = inventory[activeSlot];
+            
             if (currentItem === 'fuel' && fuelTankModel) {
                 const clone = fuelTankModel.clone(); clone.position.set(0, -0.2, 0); clone.rotation.set(0.2, Math.PI, 0); clone.scale.set(0.02, 0.02, 0.02); handGroup.add(clone);
             }
@@ -388,7 +388,7 @@
         function dropItem() {
             const itemType = inventory[activeSlot]; if (!itemType) return; 
             const dropPos = camera.position.clone(); const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dropPos.add(dir.multiplyScalar(2)); dropPos.y = 0.5; 
-            if (itemType === 'fuel' && fuelTankModel) { fuelTankModel.position.copy(dropPos); scene.add(fuelTankModel); }
+            if (itemType === 'fuel') { fuelTankModel.position.copy(dropPos); scene.add(fuelTankModel); }
             inventory[activeSlot] = null; updateSlotUI();
         }
 
@@ -408,7 +408,7 @@
         });
 
         const raycaster = new THREE.Raycaster(); let isGateOpen = false;
-        function updateObjective(text) { const el = document.getElementById('objective-text'); if(el) el.innerText = text; }
+        function updateObjective(text) { document.getElementById('objective-text').innerText = text; }
         function showNotification(msg) { const noti = document.getElementById('notification'); if(noti){ noti.innerText = msg; noti.classList.remove('hidden'); setTimeout(() => noti.classList.add('hidden'), 4000); } }
 
         window.addEventListener('click', () => {
@@ -417,6 +417,7 @@
             if (intersects.length > 0) {
                 let object = intersects[0].object;
                 
+                // สับคันโยก
                 if (object.userData.isLever) {
                     if (!isGateOpen) {
                         isGateOpen = true; 
@@ -426,10 +427,12 @@
                     }
                 }
 
+                // เก็บน้ำมัน
                 if (object.userData.isFuel) {
                     if (addItem('fuel')) { showNotification("เก็บถังน้ำมันแล้ว!"); scene.remove(fuelTankModel); }
                 }
                 
+                // คุยกับรถไฟ
                 if (object.userData.isTrain || object === trainModel) {
                     let hasFuelInBag = false; for(let i=1; i<=3; i++) { if(inventory[i] === 'fuel') hasFuelInBag = true; }
                     
@@ -477,6 +480,7 @@
         function animate() {
             requestAnimationFrame(animate); const time = performance.now(); const delta = (time - prevTime) / 1000;
             
+            // ⏳ อัปเดตเวลา
             if (gameStarted && !gameEnded && !isMapOpen) {
                 timeLeft -= delta;
                 if (timeLeft <= 0) {
