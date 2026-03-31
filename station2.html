@@ -43,7 +43,10 @@
         .spinner { border: 8px solid rgba(255,255,255,0.1); border-left-color: #ffc107; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin-bottom: 20px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
+    
+    <audio id="ambient-sound" src="/sounds/s2.mp3" loop></audio>
     <audio id="train-sound" src="/sounds/train.mp3" loop></audio>
+    
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
     </script>
@@ -229,7 +232,6 @@
             torchModel = new THREE.Group(); torchModel.add(tHand.clone(), tFlame.clone());
         }
 
-        // ✨ เพิ่มระบบ LoadingManager
         const manager = new THREE.LoadingManager();
         manager.onProgress = function ( url, itemsLoaded, itemsTotal ) {
             const progress = Math.round((itemsLoaded / itemsTotal) * 100);
@@ -242,7 +244,6 @@
             }, 500); 
         };
 
-        // โหลด Models โดยใช้ manager
         const loader = new GLTFLoader(manager); 
         let trainModel, fuelTankModel, crowbarModel, torchModel;
         
@@ -276,7 +277,17 @@
         const controls = new PointerLockControls(camera, document.body); scene.add(controls.getObject());
         let gameStarted = false; let isMapOpen = false;
 
-        document.getElementById('start-btn').addEventListener('click', () => { gameStarted = true; controls.lock(); });
+        // ✨ สั่งให้เล่นเสียง Ambient เมื่อกดปุ่มเข้าเล่นเกม
+        document.getElementById('start-btn').addEventListener('click', () => { 
+            gameStarted = true; 
+            controls.lock(); 
+            const ambientSound = document.getElementById('ambient-sound');
+            if(ambientSound) {
+                ambientSound.volume = 0.5; // ปรับความดัง 50% ให้ฟังสบายๆ ไม่หนวกหูเกินไป
+                ambientSound.play().catch(e => console.log("รอผู้เล่นกดเล่นเกมก่อนถึงจะมีเสียง"));
+            }
+        });
+        
         document.getElementById('pause-screen').addEventListener('click', () => { controls.lock(); });
         controls.addEventListener('lock', () => { document.getElementById('start-screen').classList.add('hidden'); document.getElementById('pause-screen').classList.add('hidden'); isMapOpen = false; document.getElementById('full-map-screen').classList.add('hidden'); });
         controls.addEventListener('unlock', () => { if (gameStarted && !isMapOpen && document.getElementById('travel-screen').classList.contains('hidden')) { document.getElementById('pause-screen').classList.remove('hidden'); } });
@@ -394,9 +405,18 @@
             }
         });
 
-        // ✨ แก้ไขฟังก์ชันเดินทางของด่านที่ 2
         function startJourney() {
             controls.unlock();
+            
+            // ✨ ค่อยๆ เฟดเสียงบรรยากาศลงตอนจะจบด่าน
+            const ambientSound = document.getElementById('ambient-sound');
+            if(ambientSound) {
+                let ambFade = setInterval(() => { 
+                    if(ambientSound.volume > 0.05) ambientSound.volume -= 0.05; 
+                    else { ambientSound.pause(); clearInterval(ambFade); }
+                }, 200);
+            }
+            
             document.getElementById('travel-screen')?.classList.remove('hidden'); 
             setTimeout(() => { const ts = document.getElementById('travel-screen'); if(ts) ts.style.opacity = 1; }, 50);
             
@@ -409,7 +429,7 @@
                 document.getElementById('distance-display').innerText = Math.min(45, Math.floor(distance)); 
                 document.getElementById('fuel-display').innerText = Math.max(5, Math.floor(fuel)); 
                 
-                if (distance >= 45) { // 45 กิโลเมตร
+                if (distance >= 45) { 
                     clearInterval(journeyInterval);
                     for(let i=1; i<=3; i++) { if(inventory[i] === 'fuel') inventory[i] = null; }
                     sessionStorage.setItem('trainInventory', JSON.stringify(inventory)); 
@@ -419,7 +439,7 @@
                         else { 
                             if(trainSound) trainSound.pause(); 
                             clearInterval(volFadeOut); 
-                            window.location.href = "station3.html"; // 👉 สลับไปด่าน 3 ทันที
+                            window.location.href = "station3.html"; 
                         } 
                     }, 100);
                 }
