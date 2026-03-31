@@ -33,7 +33,7 @@
         #train-marker { width: 12px; height: 18px; background: #4488ff; border-radius: 2px; z-index: 1; }
         #fuel-marker { width: 8px; height: 8px; background: #ffcc00; box-shadow: 0 0 5px yellow; z-index: 2; }
         #house-marker { width: 14px; height: 14px; background: #8B4513; border-radius: 2px; z-index: 1; }
-        #crowbar-marker { width: 6px; height: 12px; background: #silver; box-shadow: 0 0 5px white; border-radius: 2px; z-index: 2; }
+        #crowbar-marker { width: 6px; height: 12px; background: silver; box-shadow: 0 0 5px white; border-radius: 2px; z-index: 2; }
         #travel-screen { z-index: 30; }
         #pause-screen { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); }
 
@@ -44,6 +44,11 @@
         /* หน้าจอแผนที่แบบเต็มจอ */
         #full-map-screen { z-index: 40; background: rgba(0,0,0,0.9); }
         .map-image { width: 80%; max-width: 800px; height: 70%; background: url('/images/map.jpg') center/cover; border: 5px solid #8B4513; border-radius: 10px; box-shadow: 0 0 30px rgba(255,193,7,0.3); }
+
+        /* ✨ หน้าจอ Loading Screen */
+        #loading-screen { z-index: 50; background: #000; flex-direction: column; justify-content: center; align-items: center; }
+        .spinner { border: 8px solid rgba(255,255,255,0.1); border-left-color: #ffc107; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
     <audio id="train-sound" src="/sounds/train.mp3" loop></audio>
     <script type="importmap">
@@ -51,6 +56,12 @@
     </script>
 </head>
 <body>
+    <div id="loading-screen" class="ui-layer">
+        <div class="spinner"></div>
+        <h2 style="color: #ffc107; margin-bottom: 10px;">กำลังโหลดแผนที่และโมเดล 3D...</h2>
+        <p id="loading-text" style="color: #aaa; font-size: 16px;">0%</p>
+    </div>
+
     <div id="crosshair"></div>
     <div id="notification" class="hidden"></div>
 
@@ -74,7 +85,7 @@
         <div class="map-image"></div>
     </div>
 
-    <div id="start-screen" class="ui-layer">
+    <div id="start-screen" class="ui-layer hidden">
         <h1 style="color: #ffc107; text-shadow: 2px 2px 10px rgba(0,0,0,0.8); margin-bottom: 20px; font-size: 42px;">Mystery Train Treasure</h1>
         <div class="story-panel" id="story-content"></div>
         <button id="skip-story-btn" style="background: #444; font-size: 14px; padding: 5px 15px; margin-top:0;">⏩ เร่งความเร็ว / ข้าม</button>
@@ -109,7 +120,6 @@
         function typeStory() {
             if (isStorySkipped) return;
             if (storyIndex < storyText.length) {
-                // ข้าม Tag HTML ให้พิมพ์รวดเดียวจบแท็ก
                 if (storyText.charAt(storyIndex) === '<') {
                     let tag = "";
                     while(storyText.charAt(storyIndex) !== '>' && storyIndex < storyText.length) {
@@ -131,7 +141,6 @@
             document.getElementById('start-controls').classList.remove('hidden');
         }
         document.getElementById('skip-story-btn').addEventListener('click', finishStory);
-        typeStory(); // เริ่มพิมพ์อัตโนมัติ
 
         // --- Three.js Setup ---
         const canvas = document.querySelector('#game-canvas');
@@ -155,7 +164,7 @@
 
         const collidableMeshes = [];
 
-        // พื้นดิน
+        // สร้างป่าแบบ Procedural
         const planeGeo = new THREE.PlaneGeometry(150, 150, 64, 64); const posAttr = planeGeo.attributes.position;
         for (let i = 0; i < posAttr.count; i++) {
             let x = posAttr.getX(i); let y = posAttr.getY(i);
@@ -183,12 +192,31 @@
             scene.add(createProceduralTree(x, z));
         }
 
-        const loader = new GLTFLoader(); let trainModel, houseModel, fuelTankModel, crowbarModel; let doorMesh;
+        // ✨ ระบบจัดการการโหลดไฟล์ (LoadingManager)
+        const manager = new THREE.LoadingManager();
+        manager.onProgress = function ( url, itemsLoaded, itemsTotal ) {
+            const progress = Math.round((itemsLoaded / itemsTotal) * 100);
+            document.getElementById('loading-text').innerText = `${progress}% (${itemsLoaded}/${itemsTotal})`;
+        };
+        manager.onLoad = function ( ) {
+            // ซ่อนหน้าโหลด และโชว์หน้าเนื้อเรื่องแทน
+            setTimeout(() => {
+                document.getElementById('loading-screen').classList.add('hidden');
+                document.getElementById('start-screen').classList.remove('hidden');
+                typeStory(); // เริ่มพิมพ์เนื้อเรื่องหลังจากโหลดโมเดลเสร็จ
+            }, 500); // ดีเลย์ครึ่งวิให้เห็น 100% สวยๆ
+        };
+
+        const loader = new GLTFLoader(manager); // ใช้งาน Manager กับ Loader
+        let trainModel, houseModel, fuelTankModel, crowbarModel; let doorMesh;
+        
         loader.load('/models/train.glb', (gltf) => { trainModel = gltf.scene; trainModel.position.set(0, 0, -5); trainModel.traverse((child) => { if (child.isMesh) { child.userData.isTrain = true; child.castShadow = true; child.receiveShadow = true; collidableMeshes.push(child); } }); scene.add(trainModel); });
         loader.load('/models/old_house.glb', (gltf) => { houseModel = gltf.scene; houseModel.position.copy(housePos); houseModel.traverse((child) => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; collidableMeshes.push(child); } }); scene.add(houseModel); });
-        doorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 2), new THREE.MeshStandardMaterial({ color: 0x8B4513 })); doorMesh.position.copy(doorPos); doorMesh.userData.isDoor = true; doorMesh.rotation.y = Math.PI / 2; doorMesh.visible = false; collidableMeshes.push(doorMesh); scene.add(doorMesh);
         loader.load('/models/ussr_gas_canister.glb', (gltf) => { fuelTankModel = gltf.scene; fuelTankModel.scale.set(0.04, 0.04, 0.04); fuelTankModel.position.copy(fuelPos); fuelTankModel.traverse((child) => { if (child.isMesh) child.userData.isFuel = true; child.castShadow = true; }); scene.add(fuelTankModel); });
         loader.load('/models/crowbar.glb', (gltf) => { crowbarModel = gltf.scene; crowbarModel.position.copy(crowbarPos); crowbarModel.traverse((child) => { if (child.isMesh) child.userData.isCrowbar = true; child.castShadow = true; }); scene.add(crowbarModel); });
+
+        // ประตูปลอม (ไม่ใช่โมเดลโหลด)
+        doorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 2), new THREE.MeshStandardMaterial({ color: 0x8B4513 })); doorMesh.position.copy(doorPos); doorMesh.userData.isDoor = true; doorMesh.rotation.y = Math.PI / 2; doorMesh.visible = false; collidableMeshes.push(doorMesh); scene.add(doorMesh);
 
         const controls = new PointerLockControls(camera, document.body); scene.add(controls.getObject());
         let gameStarted = false; let isMapOpen = false;
@@ -198,7 +226,7 @@
 
         controls.addEventListener('lock', () => { 
             document.getElementById('start-screen').classList.add('hidden'); document.getElementById('pause-screen').classList.add('hidden'); 
-            isMapOpen = false; document.getElementById('full-map-screen').classList.add('hidden'); // ปิดแมพถ้าล็อคจอ
+            isMapOpen = false; document.getElementById('full-map-screen').classList.add('hidden'); 
         });
         controls.addEventListener('unlock', () => { 
             if (gameStarted && document.getElementById('travel-screen').classList.contains('hidden') && !isMapOpen) { document.getElementById('pause-screen').classList.remove('hidden'); } 
@@ -245,7 +273,7 @@
                 case 'ShiftLeft': case 'ShiftRight': isSprinting = true; break; 
                 case 'Digit1': activeSlot = 1; updateSlotUI(); break; case 'Digit2': activeSlot = 2; updateSlotUI(); break; case 'Digit3': activeSlot = 3; updateSlotUI(); break;
                 case 'KeyQ': dropItem(); break; 
-                case 'KeyM': // เปิดปิดแผนที่
+                case 'KeyM': 
                     if (gameStarted) {
                         isMapOpen = !isMapOpen;
                         if (isMapOpen) { controls.unlock(); document.getElementById('full-map-screen').classList.remove('hidden'); document.getElementById('pause-screen').classList.add('hidden'); } 
@@ -300,11 +328,11 @@
                 if (distance >= 30) {
                     clearInterval(journeyInterval);
                     for(let i=1; i<=3; i++) { if(inventory[i] === 'fuel') inventory[i] = null; }
-                    sessionStorage.setItem('trainInventory', JSON.stringify(inventory)); // เซฟกระเป๋า
+                    sessionStorage.setItem('trainInventory', JSON.stringify(inventory)); 
                     
                     let volFadeOut = setInterval(() => {
                         if(trainSound.volume > 0.05) trainSound.volume -= 0.05;
-                        else { trainSound.pause(); clearInterval(volFadeOut); window.location.href = "station2.html"; } // ไปสถานี 2
+                        else { trainSound.pause(); clearInterval(volFadeOut); window.location.href = "station2.html"; } 
                     }, 100);
                 }
             }, 150);
