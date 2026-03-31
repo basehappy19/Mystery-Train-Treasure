@@ -29,6 +29,7 @@
         #pause-screen { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); }
         #full-map-screen { z-index: 40; background: rgba(0,0,0,0.9); }
         .map-image { width: 80%; max-width: 800px; height: 70%; background: url('/images/map.jpg') center/cover; border: 5px solid #8B4513; border-radius: 10px; }
+        
         #minimap-wrapper { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; background: rgba(0,20,0,0.6); border: 3px solid #555; border-radius: 50%; overflow: hidden; z-index: 10; }
         .map-marker { position: absolute; border-radius: 50%; transform: translate(-50%, -50%); }
         #player-marker { width: 8px; height: 8px; background: #ff4444; box-shadow: 0 0 5px red; z-index: 4; }
@@ -36,6 +37,11 @@
         #fuel-marker { width: 8px; height: 8px; background: #ffcc00; box-shadow: 0 0 5px yellow; z-index: 2; }
         #house-marker { width: 14px; height: 14px; background: #8B4513; border-radius: 2px; z-index: 1; }
         #crowbar-marker { width: 6px; height: 12px; background: silver; box-shadow: 0 0 5px white; border-radius: 2px; z-index: 2; }
+        
+        /* ✨ โหลดดิ้งสกรีน */
+        #loading-screen { z-index: 50; background: #000; flex-direction: column; justify-content: center; align-items: center; }
+        .spinner { border: 8px solid rgba(255,255,255,0.1); border-left-color: #ffc107; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
     <audio id="train-sound" src="/sounds/train.mp3" loop></audio>
     <script type="importmap">
@@ -43,6 +49,12 @@
     </script>
 </head>
 <body>
+    <div id="loading-screen" class="ui-layer">
+        <div class="spinner"></div>
+        <h2 style="color: #ffc107; margin-bottom: 10px;">กำลังโหลดท่อระบายน้ำ...</h2>
+        <p id="loading-text" style="color: #aaa; font-size: 16px;">0%</p>
+    </div>
+
     <div id="crosshair"></div>
     <div id="notification" class="hidden"></div>
     <div id="objective-ui"><h3>Objective</h3><p id="objective-text">มืดมาก... หา "คบเพลิง" มาถือเพื่อให้แสงสว่าง</p></div>
@@ -69,9 +81,9 @@
         <div class="map-image"></div>
     </div>
 
-    <div id="start-screen" class="ui-layer">
+    <div id="start-screen" class="ui-layer hidden">
         <h1 style="color: #ffc107; font-size: 42px;">สถานีที่ 2: ท่อระบายน้ำมรณะ</h1>
-        <p style="font-size: 18px; max-width: 600px; text-align: center; line-height: 1.6;">ทางข้างหน้าเป็นท่อระบายน้ำคับแคบและมืดมิด ทางซ้ายเป็นแม่น้ำเสีย ประตูเหล็กกั้นรถไฟถูกล็อคไว้ คุณต้องมุดเข้าไปในเขาวงกตที่ซับซ้อนทางฝั่งขวาเพื่อสับ "คันโยก"...</p>
+        <p style="font-size: 18px; max-width: 600px; text-align: center; line-height: 1.6;">ทางข้างหน้าเป็นท่อระบายน้ำคับแคบและมืดมิด ทางซ้ายเป็นแม่น้ำเสีย ประตูเหล็กกั้นรถไฟถูกล็อคไว้ คุณต้องมุดเข้าไปในเขาวงกตฝั่งขวาเพื่อสับ "คันโยก"...</p>
         <p style="color: #bbb;"><i>[ เคล็ดลับ: ข้างในมืดมาก มองหาแสงสว่างและหยิบคบเพลิงขึ้นมาถือด่วน! ]</i></p>
         <button id="start-btn">มุดลงท่อระบายน้ำ</button>
     </div>
@@ -79,7 +91,9 @@
     <div id="pause-screen" class="ui-layer hidden"><h1>หยุดเกมชั่วคราว</h1><p>คลิกที่หน้าจอเพื่อเล่นต่อ</p></div>
 
     <div id="travel-screen" class="ui-layer hidden" style="background: black; transition: opacity 2s;">
-        <h1 style="color: white; margin-bottom: 40px;">🚂 กำลังเดินทางไปยังจุดสิ้นสุดแผนที่ (สถานีที่ 3)...</h1>
+        <h1 style="color: white; margin-bottom: 40px;">🚂 กำลังเดินทางไปยังสถานที่สุดท้าย...</h1>
+        <div style="font-size: 24px; margin: 10px 0; color: #ffc107;">ระยะทาง: <span id="distance-display">0</span> / 45 กม.</div>
+        <div style="font-size: 24px; margin: 10px 0; color: #ffc107;">น้ำมันคงเหลือ: <span id="fuel-display">100</span> %</div>
     </div>
 
     <canvas id="game-canvas"></canvas>
@@ -89,11 +103,11 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-        // --- สร้าง Textures (ชื้นแฉะและอึดอัด) ---
+        // --- สร้าง Textures ---
         function createBrickTexture() {
             const c = document.createElement('canvas'); c.width = 256; c.height = 256; const ctx = c.getContext('2d');
             ctx.fillStyle = '#0a0d0a'; ctx.fillRect(0,0,256,256); 
-            ctx.fillStyle = '#1e2620'; // สีอิฐเขียวชื้นๆ
+            ctx.fillStyle = '#1e2620'; 
             for(let y=0; y<256; y+=32) {
                 for(let x=0; x<256; x+=64) {
                     let offsetX = (y/32)%2===0 ? 0 : 32;
@@ -130,30 +144,24 @@
 
         const canvas = document.querySelector('#game-canvas');
         const scene = new THREE.Scene();
-        
-        // ✨ ความมืดระดับสยองขวัญ
         scene.background = new THREE.Color(0x020302); 
-        scene.fog = new THREE.FogExp2(0x020302, 0.08); // หมอกทึบและใกล้ขึ้น
+        scene.fog = new THREE.FogExp2(0x020302, 0.08); 
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(3, 2, 10); // เกิดพ้นรถไฟ
+        camera.position.set(3, 2, 10); 
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight);
 
-        // แสงสลัวๆ
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.02); // มืดมาก
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.02); 
         scene.add(ambientLight);
         
-        // ไฟฉุกเฉินจุดเกิด พอให้เห็นกำแพงลางๆ
-        const guideLight = new THREE.PointLight(0xff3333, 0.8, 12);
+        const guideLight = new THREE.PointLight(0xff3333, 1.5, 15);
         guideLight.position.set(3, 3, 10);
         scene.add(guideLight);
 
-        // ไฟรถไฟ
         const trainLight = new THREE.PointLight(0xffaa00, 1.0, 15); 
         trainLight.position.set(-2, 3, -5); 
         scene.add(trainLight);
 
-        // ไฟคบเพลิงในมือ
         const torchLight = new THREE.PointLight(0xffaa55, 0, 30); 
         torchLight.position.set(0, 0, 0); 
         camera.add(torchLight); 
@@ -171,10 +179,9 @@
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), matClone); mesh.position.set(x, y, z); scene.add(mesh); collidableMeshes.push(mesh); return mesh;
         }
 
-        // ✨ สร้างด่านที่แคบและเตี้ยลง (เพดานสูงแค่ 4.5)
         const C_HEIGHT = 4.5;
 
-        // ท่อหลัก (กว้างแค่ 8)
+        // ท่อหลัก 
         addBox(1, -0.5, -20, 8, 1, 80, floorMat); 
         addBox(1, C_HEIGHT, -20, 8, 1, 80, wallMat);
         
@@ -182,44 +189,61 @@
         const water = new THREE.Mesh(new THREE.PlaneGeometry(6, 80), waterMat); water.rotation.x = -Math.PI/2; water.position.set(-6, -1, -20); scene.add(water);
         const waterBarrier = new THREE.Mesh(new THREE.BoxGeometry(1, C_HEIGHT, 80), new THREE.MeshBasicMaterial({visible:false})); waterBarrier.position.set(-3, C_HEIGHT/2, -20); collidableMeshes.push(waterBarrier); scene.add(waterBarrier);
 
-        // กำแพงท่อหลักซ้ายขวา
-        addBox(5, C_HEIGHT/2, 5, 2, C_HEIGHT, 30, wallMat);   // ขวาท่อนแรก
-        addBox(5, C_HEIGHT/2, -45, 2, C_HEIGHT, 30, wallMat); // ขวาท่อนหลัง
-        addBox(-9, C_HEIGHT/2, -20, 2, C_HEIGHT, 80, wallMat); // ซ้ายสุด (เลยน้ำ)
-        addBox(1, C_HEIGHT/2, 20, 10, C_HEIGHT, 2, wallMat); // ปิดหลังจุดเกิด
-        
-        // ช่องทางเข้าเขาวงกต (แคบๆ)
+        addBox(5, C_HEIGHT/2, 5, 2, C_HEIGHT, 30, wallMat);   
+        addBox(5, C_HEIGHT/2, -45, 2, C_HEIGHT, 30, wallMat); 
+        addBox(-9, C_HEIGHT/2, -20, 2, C_HEIGHT, 80, wallMat); 
+        addBox(1, C_HEIGHT/2, 20, 10, C_HEIGHT, 2, wallMat); 
         addBox(5, C_HEIGHT/2, -30, 2, C_HEIGHT, 20, wallMat).visible = false; 
 
-        // ✨ โซนเขาวงกต (แคบและซับซ้อนขึ้นมาก)
+        // โซนเขาวงกต
         addBox(20, -0.5, -25, 30, 1, 50, floorMat); 
         addBox(20, C_HEIGHT, -25, 30, 1, 50, wallMat); 
-        
-        // ล้อมรอบวงกต
-        addBox(36, C_HEIGHT/2, -25, 2, C_HEIGHT, 50, wallMat); // ขวาสุด
-        addBox(20, C_HEIGHT/2, 1, 30, C_HEIGHT, 2, wallMat);  // ล่างสุด
-        addBox(20, C_HEIGHT/2, -51, 30, C_HEIGHT, 2, wallMat); // บนสุด
+        addBox(36, C_HEIGHT/2, -25, 2, C_HEIGHT, 50, wallMat); 
+        addBox(20, C_HEIGHT/2, 1, 30, C_HEIGHT, 2, wallMat);  
+        addBox(20, C_HEIGHT/2, -51, 30, C_HEIGHT, 2, wallMat); 
+        addBox(10, C_HEIGHT/2, -10, 2, C_HEIGHT, 20, wallMat); 
+        addBox(15, C_HEIGHT/2, -25, 10, C_HEIGHT, 2, wallMat); 
+        addBox(25, C_HEIGHT/2, -15, 2, C_HEIGHT, 20, wallMat); 
+        addBox(15, C_HEIGHT/2, -40, 10, C_HEIGHT, 2, wallMat); 
+        addBox(25, C_HEIGHT/2, -40, 2, C_HEIGHT, 15, wallMat); 
+        addBox(30, C_HEIGHT/2, -25, 10, C_HEIGHT, 2, wallMat); 
 
-        // ซอยย่อยและทางตัน (กว้างแค่ทางละ 4-5 หน่วย)
-        addBox(10, C_HEIGHT/2, -10, 2, C_HEIGHT, 20, wallMat); // กั้นหน้าทางเข้า
-        addBox(15, C_HEIGHT/2, -25, 10, C_HEIGHT, 2, wallMat); // ขวางแนวนอน
-        addBox(25, C_HEIGHT/2, -15, 2, C_HEIGHT, 20, wallMat); // ขวางแนวตั้งยาว
-        addBox(15, C_HEIGHT/2, -40, 10, C_HEIGHT, 2, wallMat); // ขวางลึก
-        addBox(25, C_HEIGHT/2, -40, 2, C_HEIGHT, 15, wallMat); // กั้นทางก่อนถึงสวิตช์
-        addBox(30, C_HEIGHT/2, -25, 10, C_HEIGHT, 2, wallMat); // ทางตันซ้ายขวา
-
-        // 🚪 ประตูเหล็กกั้นรถไฟ (ในท่อหลัก)
         const gateMesh = new THREE.Mesh(new THREE.BoxGeometry(8, C_HEIGHT, 0.5), new THREE.MeshStandardMaterial({ color: 0x111, wireframe: true })); 
         gateMesh.position.set(1, C_HEIGHT/2, -35); collidableMeshes.push(gateMesh); scene.add(gateMesh);
 
-        // ⚙️ คันโยก (Lever) ไว้ลึกสุดในเขาวงกต (มุมซอกแคบๆ)
         const leverBase = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.5, 1), new THREE.MeshStandardMaterial({color: 0x666666})); 
         leverBase.position.set(34.5, 2, -48); scene.add(leverBase); collidableMeshes.push(leverBase);
         const leverMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 0.2), new THREE.MeshStandardMaterial({ color: 0xff0000 })); 
         leverMesh.position.set(34.2, 2, -48); leverMesh.userData.isLever = true; scene.add(leverMesh);
 
-        // --- โหลด Models ทั้งหมด ---
-        const loader = new GLTFLoader(); 
+        const torchObj = new THREE.Group(); 
+        torchObj.position.set(4, 0.5, 7); 
+        const dropLight = new THREE.PointLight(0xffaa55, 3.0, 15); dropLight.position.y = 0.5; 
+
+        function createFallbackTorch() {
+            const tHand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), new THREE.MeshStandardMaterial({ color: 0x8B4513 })); 
+            tHand.userData.isTorch = true; torchObj.add(tHand);
+            const tFlame = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffaa00 })); 
+            tFlame.position.y = 0.4; tFlame.userData.isTorch = true; torchObj.add(tFlame);
+            torchObj.add(dropLight); scene.add(torchObj);
+            torchModel = new THREE.Group(); torchModel.add(tHand.clone(), tFlame.clone());
+        }
+
+        // ✨ เพิ่มระบบ LoadingManager
+        const manager = new THREE.LoadingManager();
+        manager.onProgress = function ( url, itemsLoaded, itemsTotal ) {
+            const progress = Math.round((itemsLoaded / itemsTotal) * 100);
+            document.getElementById('loading-text').innerText = `${progress}% (${itemsLoaded}/${itemsTotal})`;
+        };
+        manager.onLoad = function ( ) {
+            setTimeout(() => {
+                document.getElementById('loading-screen').classList.add('hidden');
+                document.getElementById('start-screen').classList.remove('hidden');
+            }, 500); 
+        };
+
+        // โหลด Models โดยใช้ manager
+        const loader = new GLTFLoader(manager); 
         let trainModel, fuelTankModel, crowbarModel, torchModel;
         
         loader.load('/models/train.glb', (gltf) => { 
@@ -230,40 +254,21 @@
         
         loader.load('/models/ussr_gas_canister.glb', (gltf) => {
             fuelTankModel = gltf.scene; fuelTankModel.scale.set(0.04, 0.04, 0.04); 
-            fuelTankModel.position.set(2, 0.5, -45); // ซ่อนหลังประตูกั้น
+            fuelTankModel.position.set(2, 0.5, -45); 
             fuelTankModel.traverse((child) => { if (child.isMesh) child.userData.isFuel = true; }); scene.add(fuelTankModel);
         });
         
         loader.load('/models/crowbar.glb', (gltf) => { crowbarModel = gltf.scene; });
 
-        // ✨ ตัวแปรจัดการคบเพลิง
-        const torchObj = new THREE.Group(); 
-        torchObj.position.set(4, 0.5, 7); // ตกอยู่หน้าผู้เล่น
-        const dropLight = new THREE.PointLight(0xffaa55, 3.0, 15); dropLight.position.y = 0.5; 
-
-        // ฟังก์ชันสร้างคบเพลิงจำลอง (ถ้าโหลดโมเดลไม่ขึ้น)
-        function createFallbackTorch() {
-            const tHand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), new THREE.MeshStandardMaterial({ color: 0x8B4513 })); 
-            tHand.userData.isTorch = true; torchObj.add(tHand);
-            const tFlame = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffaa00 })); 
-            tFlame.position.y = 0.4; tFlame.userData.isTorch = true; torchObj.add(tFlame);
-            torchObj.add(dropLight); scene.add(torchObj);
-            torchModel = new THREE.Group(); torchModel.add(tHand.clone(), tFlame.clone());
-        }
-
-        // โหลด torch.glb 
         loader.load('/models/torch_stick.glb', (gltf) => { 
             torchModel = gltf.scene;
             torchModel.scale.set(1.5, 1.5, 1.5); 
-            
-            // เอาโมเดลไปใส่ใน torchObj ที่อยู่บนพื้น
             const modelForGround = torchModel.clone();
             modelForGround.traverse((child) => { if (child.isMesh) child.userData.isTorch = true; });
             torchObj.add(modelForGround);
             torchObj.add(dropLight);
             scene.add(torchObj);
         }, undefined, (err) => {
-            console.log("ไม่พบไฟล์ torch_stick.glb ใช้รูปทรงสำรองแทน");
             createFallbackTorch();
         });
 
@@ -289,20 +294,23 @@
             
             if (currentItem === 'torch') {
                 torchLight.visible = true;
-                ambientLight.intensity = 0.15; // ถือไฟแล้วเห็นชัดขึ้นนิดหน่อย
+                ambientLight.intensity = 0.15; 
             } else {
                 torchLight.visible = false;
-                ambientLight.intensity = 0.02; // กลับไปมืดสนิท
+                ambientLight.intensity = 0.02; 
             }
             
             if (currentItem === 'fuel' && fuelTankModel) {
                 const clone = fuelTankModel.clone(); clone.position.set(0, 0, 0); clone.rotation.set(0.2, Math.PI, 0); clone.scale.set(0.02, 0.02, 0.02); clone.traverse(child => child.userData = {}); handGroup.add(clone);
-            } else if (currentItem === 'torch' && torchModel) {
-                const clone = torchModel.clone(); 
-                clone.position.set(0.3, -0.3, -0.2); 
-                clone.rotation.set(Math.PI/6, -Math.PI/4, 0); 
-                clone.traverse(child => child.userData = {}); 
-                handGroup.add(clone);
+            } else if (currentItem === 'torch') {
+                if(torchModel) {
+                    const clone = torchModel.clone(); clone.position.set(0.3, -0.3, -0.2); clone.rotation.set(Math.PI/6, -Math.PI/4, 0); clone.traverse(child => child.userData = {}); handGroup.add(clone);
+                } else {
+                    const clone = new THREE.Group(); 
+                    const cHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), new THREE.MeshStandardMaterial({ color: 0x8B4513 })); 
+                    const cFlame = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffaa00 })); 
+                    cFlame.position.y = 0.4; clone.add(cHandle, cFlame); clone.rotation.set(Math.PI/4, -Math.PI/4, 0); handGroup.add(clone);
+                }
             } else if (currentItem === 'crowbar' && crowbarModel) {
                 const clone = crowbarModel.clone(); clone.position.set(0, 0, 0); clone.rotation.set(Math.PI/4, -Math.PI/2, 0); handGroup.add(clone);
             }
@@ -311,8 +319,12 @@
         function updateSlotUI() {
             for (let i = 1; i <= 3; i++) {
                 const el = document.getElementById('inv-slot-' + i);
-                if (i === activeSlot) el.classList.add('active'); else el.classList.remove('active');
-                let emoji = ""; if (inventory[i] === 'fuel') emoji = "🛢️"; if (inventory[i] === 'crowbar') emoji = "🪝"; if (inventory[i] === 'torch') emoji = "🔥"; document.getElementById('item-' + i).innerText = emoji;
+                if (el) {
+                    if (i === activeSlot) el.classList.add('active'); else el.classList.remove('active');
+                }
+                let emoji = ""; if (inventory[i] === 'fuel') emoji = "🛢️"; if (inventory[i] === 'crowbar') emoji = "🪝"; if (inventory[i] === 'torch') emoji = "🔥"; 
+                const itemEl = document.getElementById('item-' + i);
+                if(itemEl) itemEl.innerText = emoji;
             }
             updateHandDisplay(); 
         }
@@ -326,7 +338,7 @@
         function dropItem() {
             const itemType = inventory[activeSlot]; if (!itemType) return; 
             const dropPos = camera.position.clone(); const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dropPos.add(dir.multiplyScalar(2)); dropPos.y = 0.5; 
-            if (itemType === 'torch') { torchObj.position.copy(dropPos); scene.add(torchObj); } else if (itemType === 'fuel') { fuelTankModel.position.copy(dropPos); scene.add(fuelTankModel); }
+            if (itemType === 'torch' && torchObj) { torchObj.position.copy(dropPos); scene.add(torchObj); } else if (itemType === 'fuel' && fuelTankModel) { fuelTankModel.position.copy(dropPos); scene.add(fuelTankModel); }
             inventory[activeSlot] = null; updateSlotUI();
         }
 
@@ -337,7 +349,7 @@
                 case 'Digit1': activeSlot = 1; updateSlotUI(); break; case 'Digit2': activeSlot = 2; updateSlotUI(); break; case 'Digit3': activeSlot = 3; updateSlotUI(); break;
                 case 'KeyQ': dropItem(); break; 
                 case 'KeyM': 
-                    if (gameStarted) { isMapOpen = !isMapOpen; if (isMapOpen) { controls.unlock(); document.getElementById('full-map-screen').classList.remove('hidden'); document.getElementById('pause-screen').classList.add('hidden'); } else { controls.lock(); document.getElementById('full-map-screen').classList.add('hidden'); } } break;
+                    if (gameStarted) { isMapOpen = !isMapOpen; if (isMapOpen) { controls.unlock(); document.getElementById('full-map-screen')?.classList.remove('hidden'); document.getElementById('pause-screen')?.classList.add('hidden'); } else { controls.lock(); document.getElementById('full-map-screen')?.classList.add('hidden'); } } break;
             }
         });
         document.addEventListener('keyup', (e) => {
@@ -345,8 +357,8 @@
         });
 
         const raycaster = new THREE.Raycaster(); let isGateOpen = false;
-        function updateObjective(text) { document.getElementById('objective-text').innerText = text; }
-        function showNotification(msg) { const noti = document.getElementById('notification'); noti.innerText = msg; noti.classList.remove('hidden'); setTimeout(() => noti.classList.add('hidden'), 4000); }
+        function updateObjective(text) { const el = document.getElementById('objective-text'); if(el) el.innerText = text; }
+        function showNotification(msg) { const noti = document.getElementById('notification'); if(noti) { noti.innerText = msg; noti.classList.remove('hidden'); setTimeout(() => noti.classList.add('hidden'), 4000); } }
 
         window.addEventListener('click', () => {
             if (!controls.isLocked) return;
@@ -382,14 +394,36 @@
             }
         });
 
+        // ✨ แก้ไขฟังก์ชันเดินทางของด่านที่ 2
         function startJourney() {
             controls.unlock();
-            document.getElementById('travel-screen').classList.remove('hidden'); setTimeout(() => { document.getElementById('travel-screen').style.opacity = 1; }, 50);
+            document.getElementById('travel-screen')?.classList.remove('hidden'); 
+            setTimeout(() => { const ts = document.getElementById('travel-screen'); if(ts) ts.style.opacity = 1; }, 50);
             
-            const trainSound = document.getElementById('train-sound'); trainSound.volume = 0; trainSound.play();
-            let volFade = setInterval(() => { if(trainSound.volume < 0.6) trainSound.volume += 0.05; else clearInterval(volFade); }, 200);
+            const trainSound = document.getElementById('train-sound'); 
+            if(trainSound) { trainSound.volume = 0; trainSound.play(); let volFade = setInterval(() => { if(trainSound.volume < 0.6) trainSound.volume += 0.05; else clearInterval(volFade); }, 200); }
 
-            setTimeout(() => { alert("ยินดีด้วย! คุณผ่านด่านท่อระบายน้ำมรณะแล้ว (เตรียมเข้าสู่สถานีที่ 3)"); }, 4000);
+            let distance = 0; let fuel = 100;
+            const journeyInterval = setInterval(() => {
+                distance += 1.5; fuel -= (95 / 30);
+                document.getElementById('distance-display').innerText = Math.min(45, Math.floor(distance)); 
+                document.getElementById('fuel-display').innerText = Math.max(5, Math.floor(fuel)); 
+                
+                if (distance >= 45) { // 45 กิโลเมตร
+                    clearInterval(journeyInterval);
+                    for(let i=1; i<=3; i++) { if(inventory[i] === 'fuel') inventory[i] = null; }
+                    sessionStorage.setItem('trainInventory', JSON.stringify(inventory)); 
+                    
+                    let volFadeOut = setInterval(() => {
+                        if(trainSound && trainSound.volume > 0.05) trainSound.volume -= 0.05;
+                        else { 
+                            if(trainSound) trainSound.pause(); 
+                            clearInterval(volFadeOut); 
+                            window.location.href = "station3.html"; // 👉 สลับไปด่าน 3 ทันที
+                        } 
+                    }, 100);
+                }
+            }, 150);
         }
 
         let prevTime = performance.now();
@@ -412,9 +446,10 @@
                 velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
                 direction.z = Number(moveForward) - Number(moveBackward); direction.x = Number(moveRight) - Number(moveLeft); direction.normalize();
 
-                let isMoving = moveForward || moveBackward || moveLeft || moveRight; let currentSpeed = 25.0; // ในท่อแคบเดินช้าลงอีก
+                let isMoving = moveForward || moveBackward || moveLeft || moveRight; let currentSpeed = 25.0; 
                 if (isSprinting && stamina > 0 && isMoving) { currentSpeed = 50.0; stamina -= 25 * delta; if (stamina < 0) stamina = 0; } else { stamina += 15 * delta; if (stamina > maxStamina) stamina = maxStamina; }
-                staminaBar.style.width = (stamina / maxStamina * 100) + '%'; staminaBar.style.backgroundColor = stamina < 30 ? '#dc3545' : '#28a745'; 
+                const bar = document.getElementById('stamina-bar');
+                if(bar) { bar.style.width = (stamina / maxStamina * 100) + '%'; bar.style.backgroundColor = stamina < 30 ? '#dc3545' : '#28a745'; }
 
                 if (moveForward || moveBackward) velocity.z -= direction.z * currentSpeed * delta; if (moveLeft || moveRight) velocity.x -= direction.x * currentSpeed * delta;
                 const oldPosition = camera.position.clone();
@@ -431,19 +466,32 @@
             }
             
             const mapScale = 150 / 100; const offset = 75; 
-            document.getElementById('player-marker').style.left = `${Math.min(140, Math.max(10, (camera.position.x * mapScale) + offset))}px`;
-            document.getElementById('player-marker').style.top = `${Math.min(140, Math.max(10, (camera.position.z * mapScale) + offset))}px`;
-            document.getElementById('train-marker').style.left = `${(-2 * mapScale) + offset}px`; document.getElementById('train-marker').style.top = `${(-5 * mapScale) + offset}px`;
+            const pMarker = document.getElementById('player-marker');
+            if (pMarker) {
+                pMarker.style.left = `${Math.min(140, Math.max(10, (camera.position.x * mapScale) + offset))}px`;
+                pMarker.style.top = `${Math.min(140, Math.max(10, (camera.position.z * mapScale) + offset))}px`;
+            }
+            const tMarker = document.getElementById('train-marker');
+            if (tMarker) {
+                tMarker.style.left = `${(-2 * mapScale) + offset}px`; tMarker.style.top = `${(-5 * mapScale) + offset}px`;
+            }
 
-            const crowbarMarker = document.getElementById('crowbar-marker'); let hasCrowbarInBag = inventory[1]==='crowbar' || inventory[2]==='crowbar' || inventory[3]==='crowbar';
-            if (!hasCrowbarInBag && crowbarModel && crowbarModel.parent === scene) { crowbarMarker.style.left = `${(crowbarModel.position.x * mapScale) + offset}px`; crowbarMarker.style.top = `${(crowbarModel.position.z * mapScale) + offset}px`; crowbarMarker.style.display = 'block'; } else { crowbarMarker.style.display = 'none'; }
-            const fuelMarker = document.getElementById('fuel-marker'); let hasFuelInBag = inventory[1]==='fuel' || inventory[2]==='fuel' || inventory[3]==='fuel';
-            if (!hasFuelInBag && isGateOpen && fuelTankModel && fuelTankModel.parent === scene) { fuelMarker.style.left = `${(fuelTankModel.position.x * mapScale) + offset}px`; fuelMarker.style.top = `${(fuelTankModel.position.z * mapScale) + offset}px`; fuelMarker.style.display = 'block'; } else { fuelMarker.style.display = 'none'; }
+            const cMarker = document.getElementById('crowbar-marker'); 
+            let hasCrowbarInBag = inventory[1]==='crowbar' || inventory[2]==='crowbar' || inventory[3]==='crowbar';
+            if (cMarker) {
+                if (!hasCrowbarInBag && crowbarModel && crowbarModel.parent === scene) { cMarker.style.left = `${(crowbarModel.position.x * mapScale) + offset}px`; cMarker.style.top = `${(crowbarModel.position.z * mapScale) + offset}px`; cMarker.style.display = 'block'; } else { cMarker.style.display = 'none'; }
+            }
+            
+            const fMarker = document.getElementById('fuel-marker'); 
+            let hasFuelInBag = inventory[1]==='fuel' || inventory[2]==='fuel' || inventory[3]==='fuel';
+            if (fMarker) {
+                if (!hasFuelInBag && isGateOpen && fuelTankModel && fuelTankModel.parent === scene) { fMarker.style.left = `${(fuelTankModel.position.x * mapScale) + offset}px`; fMarker.style.top = `${(fuelTankModel.position.z * mapScale) + offset}px`; fMarker.style.display = 'block'; } else { fMarker.style.display = 'none'; }
+            }
 
             prevTime = time; renderer.render(scene, camera);
         }
         
-        updateSlotUI(); animate();
+        setTimeout(updateSlotUI, 200); animate();
         window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
     </script>
 </body>
